@@ -31,6 +31,14 @@ networks = (
     NetworkParams("peercoin-testnet", "tppc", b'6f', b'ef', b'c4', b'cbf2c0ef',
                   b'\x17PPCoin Signed Message:\n', Decimal(0.01),
                   0, True, Decimal('1e6')),
+    # Sparklecoin mainnet
+    NetworkParams("sparklecoin", "sprk", b'3f', b'bf', b'7d', b'e3e4e8e2',
+                  b'\x17Sparklecoin Signed Message:\n', Decimal(0.01),
+                  0, True, Decimal('1e6')),
+    # Sparklecoin testnet
+    NetworkParams("sparklecoin-testnet", "tsprk", b'7f', b'ff', b'c4', b'cffdb0ca',
+                  b'\x17Sparklecoin Signed Message:\n', Decimal(0.01),
+                  0, True, Decimal('1e6')),
     # Bitcoin mainnet
     NetworkParams("bitcoin", "btc", b'00', b'80', b'05', b'd9b4bef9',
                   b'\x18Bitcoin Signed Message:\n', 0, 0, False, Decimal('1e8')),

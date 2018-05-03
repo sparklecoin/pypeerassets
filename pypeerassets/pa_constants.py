@@ -24,7 +24,17 @@ params = (
     ## PPC testnet
     PAParams("peercoin-testnet", "tppc", "cTJVuFKuupqVjaQCFLtsJfG8NyEyHZ3vjCdistzitsD2ZapvwYZH",
              "miHhMLaMWubq4Wx6SdTEqZcUHEGp8RKMZt", "cQToBYwzrB3yHr8h7PchBobM3zbrdGKj2LtXqg7NQLuxsHeKJtRL",
-             "mvfR2sSxAfmDaGgPcmdsTwPqzS6R9nM5Bo", Decimal(0.01))
+             "mvfR2sSxAfmDaGgPcmdsTwPqzS6R9nM5Bo", Decimal(0.01)),
+
+    ## SPRK mainnet
+    PAParams("sparklecoin", "sprk", "VMy79GpUMvfQ7yVhM27brXcPvKxAUNn7oXQJ52NQGzWtPQecEYo8",
+             "SatuPf4wo1JxrWFK62q7Jm8ZwYTDvXMT1n", "VQ4Gr39aazkxDy61XA1iMEKSKTgB42rdegtjhfhdfFE6sgAbxgN3",
+             "SinPAWasqVVcoEcw7ymSH5PSFNZNZa2mkm", Decimal(0.01)),
+
+    ## SPRK testnet
+    PAParams("sparklecoin-testnet", "tsprk", "ejdajVvWCRinwbdnJsbcVrjukAAnhnb6CBaCrg31iu2Ljh4pVsCY",
+             "tHeAnCNaQarB92WpCAHC8kRs79FhJvcjgA", "ejoPqiMAC7mbcLDH9iXM9Aqg2pj46pQ6rQNxCw3zx3DmuLLoTYQ1",
+             "tTbbxyd6o9qTsUoYChay6aYtzVpreAiGHV", Decimal(0.01))
 )
 
 

@@ -58,9 +58,9 @@ class RpcNode(Client, Provider):
         '''return which network is the node operating on.'''
 
         if self.is_testnet:
-            return "tppc"
+            return "tsprk"
         else:
-            return "ppc"
+            return "sprk"
 
     def listunspent(self, minconf=1, maxconf=999999, address=None):
         '''list UTXOs
