@@ -34,7 +34,7 @@ class Kutil:
             pass
 
         if privkey is not None:
-            self._private_key = privkey
+            self._private_key = PrivateKey(privkey)
 
         if from_string is not None:
             self._private_key = PrivateKey(sha256(from_string.encode()).digest())
