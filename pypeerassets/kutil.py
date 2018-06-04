@@ -50,11 +50,11 @@ class Kutil:
                 self._private_key = PrivateKey(bytearray(urandom(32)))
 
         #Hexlify the bytearray _private_key
-        self.privkey = hexlify(self._private_key)
+        self.privkey = self._private_key.hexlify()
         #Get publickey from btcpy 
-        self._public_key = PrivateKey(self._private_key).pub()
+        self._public_key = PublicKey.from_priv(self._private_key)
         #Set pubkey to the hexlified output of above
-        self.pubkey = (self._public_key.__str__())
+        self.pubkey = self._public_key.hexlify()
         self.load_network_parameters(network)
 
     def load_network_parameters(self, network: str) -> None:
@@ -76,24 +76,13 @@ class Kutil:
     def address(self) -> str:
         '''generate an address from pubkey'''
 
-        key = unhexlify(self.pubkey)  # compressed pubkey as default
-
-        keyhash = unhexlify(self.pubkeyhash + hexlify(new('ripemd160',
-                                                      sha256(key).digest()).digest()))
-
-        checksum = sha256(sha256(keyhash).digest()).digest()[0:4]
-        address = keyhash + checksum
-        return b58encode(address)
+        return str(self._public_key.to_address())
 
     @property
     def wif(self) -> str:
         '''convert raw private key to WIF'''
 
-        #No need to encode, privkey is already byte format
-        extkey = unhexlify(self.wif_prefix + self.privkey + b'01')  # compressed by default
-        extcheck = extkey + sha256(sha256(extkey).digest()).digest()[0:4]
-        wif = b58encode(extcheck)
-        return wif
+        return self._private_key.to_wif()
 
     def sign_transaction(self, txin: TxOut,
                          tx: MutableTransaction) -> MutableTransaction:
