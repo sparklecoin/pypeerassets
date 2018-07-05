@@ -54,7 +54,7 @@ networks = (
     # Sparklecoin testnet
     NetworkParams("sparklecoin-testnet", "tsprk", b'7f', b'ff', b'c4', b'cffdb0ca',
                   b'\x17Sparklecoin Signed Message:\n', Decimal(0.01),
-                  0, True, Decimal('1e6'), 80
+                  0, True, Decimal('1e6'), 80,
                   SparklecoinTestnet),
     # Bitcoin mainnet
     NetworkParams("bitcoin", "btc", b'00', b'80', b'05', b'd9b4bef9',
