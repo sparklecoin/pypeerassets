@@ -1,15 +1,15 @@
 """all things PeerAssets protocol."""
 
-import warnings
-from binascii import unhexlify
-from .kutil import Kutil
-from .paproto_pb2 import DeckSpawn as deckspawnproto
-from .paproto_pb2 import CardTransfer as cardtransferproto
-from .pautils import amount_to_exponent, issue_mode_to_enum
-from .exceptions import InvalidDeckIssueModeCombo
-from operator import itemgetter
-from .card_parsers import *
 from enum import Enum
+from operator import itemgetter
+from typing import List, Optional, Generator, cast, Callable
+
+from pypeerassets.kutil import Kutil
+from pypeerassets.paproto_pb2 import DeckSpawn as deckspawnproto
+from pypeerassets.paproto_pb2 import CardTransfer as cardtransferproto
+from pypeerassets.exceptions import RecieverAmountMismatch, OverSizeOPReturn
+from pypeerassets.card_parsers import parsers
+from pypeerassets.networks import net_query
 
 
 class IssueMode(Enum):
@@ -41,7 +41,7 @@ class IssueMode(Enum):
     # To correctly calculate the balance of a PeerAssets addres a client should only consider the card transfer
     # transactions originating from the deck owner.
 
-    SUBSCRIPTION = 0x34  # 32 used by SUBSCRIPTION (52 = 32 | 4 | 16)
+    SUBSCRIPTION = 0x34  # SUBSCRIPTION (34 = 20 | 4 | 10)
     # https://github.com/PeerAssets/rfcs/blob/master/0001-peerassets-transaction-specification.proto#L26
     # The SUBSCRIPTION issue mode marks an address holding tokens as subscribed for a limited timeframe. This timeframe is
     # defined by the balance of the account and the time at which the first cards of this token are received.
@@ -55,7 +55,8 @@ class Deck:
 
     def __init__(self, name: str, number_of_decimals: int, issue_mode: int,
                  network: str, production: bool, version: int,
-                 asset_specific_data="", issuer="", fee=0, time=None, id=None) -> None:
+                 asset_specific_data: bytes=None, issuer: str="", time: int=None,
+                 id: str=None, tx_confirmations: int=None) -> None:
         '''
         Initialize deck object, load from dictionary Deck(**dict) or initilize
         with kwargs Deck("deck", 3, "ONCE")
@@ -64,13 +65,12 @@ class Deck:
         self.version = version  # protocol version
         self.name = name  # deck name
         self.issue_mode = issue_mode  # deck issue mode
-        self.fee = fee
-        assert isinstance(number_of_decimals, int), {"error": "number_of_decimals must be an integer"}
         self.number_of_decimals = number_of_decimals
         self.asset_specific_data = asset_specific_data  # optional metadata for the deck
         self.id = id
         self.issuer = issuer
         self.issue_time = time
+        self.confirms = tx_confirmations
         self.network = network
         self.production = production
         if self.network.startswith("t") or 'testnet' in self.network:
@@ -79,18 +79,24 @@ class Deck:
             self.testnet = False
 
     @property
-    def p2th_address(self) -> str:
+    def p2th_address(self) -> Optional[str]:
         '''P2TH address of this deck'''
 
-        return Kutil(network=self.network,
-                     privkey=unhexlify(self.id)).address
+        if self.id:
+            return Kutil(network=self.network,
+                         privkey=bytearray.fromhex(self.id)).address
+        else:
+            return None
 
     @property
-    def p2th_wif(self) -> str:
+    def p2th_wif(self) -> Optional[str]:
         '''P2TH privkey in WIF format'''
 
-        return Kutil(network=self.network,
-                     privkey=unhexlify(self.id)).wif
+        if self.id:
+            return Kutil(network=self.network,
+                         privkey=bytearray.fromhex(self.id)).wif
+        else:
+            return None
 
     @property
     def metainfo_to_protobuf(self) -> bytes:
@@ -100,33 +106,38 @@ class Deck:
         deck.version = self.version
         deck.name = self.name
         deck.number_of_decimals = self.number_of_decimals
-        deck.fee = amount_to_exponent(self.fee, self.number_of_decimals)
         deck.issue_mode = self.issue_mode
-        if not isinstance(self.asset_specific_data, bytes):
-            deck.asset_specific_data = self.asset_specific_data.encode()
-        else:
-            deck.asset_specific_data = self.asset_specific_data
+        if self.asset_specific_data:
+            if not isinstance(self.asset_specific_data, bytes):
+                deck.asset_specific_data = self.asset_specific_data.encode()
+            else:
+                deck.asset_specific_data = self.asset_specific_data
 
-        proto = deck.SerializeToString()
+        if deck.ByteSize() > net_query(self.network).op_return_max_bytes:
+            raise OverSizeOPReturn('''
+                        Metainfo size exceeds maximum of {max} bytes supported by this network.'''
+                                   .format(max=net_query(self.network)
+                                           .op_return_max_bytes))
 
-        if len(proto) > 80:
-            warnings.warn('\nMetainfo size exceeds maximum of 80bytes that fit into OP_RETURN.')
-
-        return proto
+        return deck.SerializeToString()
 
     @property
     def metainfo_to_dict(self) -> dict:
         '''encode deck into dictionary'''
 
-        return {
+        r = {
             "version": self.version,
             "name": self.name,
             "number_of_decimals": self.number_of_decimals,
-            "issue_mode": self.issue_mode,
-            "fee": self.fee
+            "issue_mode": self.issue_mode
         }
 
-    def __str__(self):
+        if self.asset_specific_data:
+            r.update({'asset_specific_data': self.asset_specific_data})
+
+        return r
+
+    def __str__(self) -> str:
 
         r = []
         for key in self.__dict__:
@@ -137,10 +148,14 @@ class Deck:
 
 class CardTransfer:
 
-    def __init__(self, deck: Deck, receiver=[], amount=[], version=1,
-                 blockhash=None, txid=None, sender=None, asset_specific_data="",
-                 number_of_decimals=None, blockseq=None, cardseq=None,
-                 blocknum=None, timestamp=None) -> None:
+    def __init__(self, deck: Deck, receiver: list=[], amount: List[int]=[],
+                 version: int=1, blockhash: str=None, txid: str=None,
+                 sender: str=None, asset_specific_data: bytes=None,
+                 number_of_decimals: int=None, blockseq: int=None,
+                 cardseq: int=None, blocknum: int=None,
+                 timestamp: int=None, tx_confirmations: int=None,
+                 type: str=None) -> None:
+
         '''CardTransfer object, used when parsing card_transfers from the blockchain
         or when sending out new card_transfer.
         It can be initialized by passing the **kwargs and it will do the parsing,
@@ -148,19 +163,25 @@ class CardTransfer:
 
         * deck - instance of Deck object
         * receiver - list of receivers
-        * amount - list of amounts to be sent, must be float
+        * amount - list of amounts to be sent, must be integer
         * version - protocol version, default 1
         * txid - transaction ID of CardTransfer
         * sender - transaction sender
         * blockhash - block ID where the tx was first included
         * blockseq - order in which tx was serialized into block
         * timestamp - unix timestamp of the block where it was first included
+        * tx_confirmations - number of confirmations of the transaction
         * asset_specific_data - extra metadata
-        * number_of_decimals - number of decimals for amount, inherited from Deck object'''
+        * number_of_decimals - number of decimals for amount, inherited from Deck object
+        : type: card type [CardIssue, CardTransfer, CardBurn]'''
 
-        assert len(amount) == len(receiver), {"error": "Amount must match receiver."}
+        if not len(amount) == len(receiver):
+            raise RecieverAmountMismatch({"error": "carn mmount must match card receiver."})
+
         self.version = version
+        self.network = deck.network
         self.deck_id = deck.id
+        self.deck_p2th = deck.p2th_address
         self.txid = txid
         self.sender = sender
         self.asset_specific_data = asset_specific_data
@@ -170,7 +191,6 @@ class CardTransfer:
             self.number_of_decimals = number_of_decimals
 
         self.receiver = receiver
-        assert len(self.receiver) < 20, {"error": "Too many receivers."}
         self.amount = amount
 
         if blockhash:
@@ -179,12 +199,17 @@ class CardTransfer:
             self.timestamp = timestamp
             self.blocknum = blocknum
             self.cardseq = cardseq
+            self.confirms = tx_confirmations
         else:
-            self.blockhash = 0
+            self.blockhash = ""
             self.blockseq = 0
             self.blocknum = 0
             self.timestamp = 0
             self.cardseq = 0
+            self.confirms = 0
+
+        if type:
+            self.type = type
 
         if self.sender == deck.issuer:
             self.type = "CardIssue"
@@ -194,26 +219,43 @@ class CardTransfer:
             self.type = "CardTransfer"
 
     @property
-    def metainfo_to_protobuf(self):
+    def metainfo_to_protobuf(self) -> bytes:
         '''encode card_transfer info to protobuf'''
 
         card = cardtransferproto()
         card.version = self.version
         card.amount.extend(self.amount)
         card.number_of_decimals = self.number_of_decimals
-        if not isinstance(self.asset_specific_data, bytes):
-            card.asset_specific_data = self.asset_specific_data.encode()
-        else:
-            card.asset_specific_data = self.asset_specific_data
+        if self.asset_specific_data:
+            if not isinstance(self.asset_specific_data, bytes):
+                card.asset_specific_data = self.asset_specific_data.encode()
+            else:
+                card.asset_specific_data = self.asset_specific_data
 
-        proto = card.SerializeToString()
+        if card.ByteSize() > net_query(self.network).op_return_max_bytes:
+            raise OverSizeOPReturn('''
+                        Metainfo size exceeds maximum of {max} bytes supported by this network.'''
+                                   .format(max=net_query(self.network)
+                                           .op_return_max_bytes))
 
-        if len(proto) > 80:
-            warnings.warn('\nMetainfo size exceeds maximum of 80bytes that fit into OP_RETURN.')
+        return card.SerializeToString()
 
-        return proto
+    @property
+    def metainfo_to_dict(self) -> dict:
+        '''encode card into dictionary'''
 
-    def __str__(self):
+        r = {
+            "version": self.version,
+            "amount": self.amount,
+            "number_of_decimals": self.number_of_decimals
+        }
+
+        if self.asset_specific_data:
+            r.update({'asset_specific_data': self.asset_specific_data})
+
+        return r
+
+    def __str__(self) -> str:
 
         r = []
         for key in self.__dict__:
@@ -232,83 +274,97 @@ def validate_card_issue_modes(issue_mode: int, cards: list) -> list:
 
     for i in [1 << x for x in range(len(IssueMode))]:
         if bool(i & issue_mode):
-            print('Applying {0} parser.'.format(IssueMode(i).name))
-            cards = parsers[IssueMode(i).name](cards)
+
+            try:
+                parser_fn = cast(
+                    Callable[[list], Optional[list]],
+                    parsers[IssueMode(i).name]
+                )
+            except ValueError:
+                continue
+
+            parsed_cards = parser_fn(cards)
+            if not parsed_cards:
+                return []
+            cards = parsed_cards
 
     return cards
 
 
 class DeckState:
 
-    def __init__(self, cards: list):
-        self.sort_cards(cards)
+    def __init__(self, cards: Generator) -> None:
+
+        self.cards = cards
         self.total = 0
         self.burned = 0
-        self.balances = {}
-        self.processed_issues = {}
-        self.processed_transfers = {}
-        self.processed_burns = {}
+        self.balances = cast(dict, {})
+        self.processed_issues = set()
+        self.processed_transfers = set()
+        self.processed_burns = set()
 
         self.calc_state()
         self.checksum = not bool(self.total - sum(self.balances.values()))
 
-    def process(self, card, ctype):
+    def _process(self, card: dict, ctype: str) -> bool:
 
         sender = card["sender"]
-        receivers = card["receiver"]
-        amount = sum(card["amount"])
+        receiver = card["receiver"][0]
+        amount = card["amount"][0]
 
-        if 'CardIssue' not in ctype:
+        if ctype != 'CardIssue':
             balance_check = sender in self.balances and self.balances[sender] >= amount
 
             if balance_check:
                 self.balances[sender] -= amount
 
                 if 'CardBurn' not in ctype:
-                    self.to_receivers(card, receivers)
+                    self._append_balance(amount, receiver)
 
                 return True
 
             return False
 
         if 'CardIssue' in ctype:
-            self.to_receivers(card, receivers)
+            self._append_balance(amount, receiver)
             return True
 
         return False
 
-    def to_receivers(self, card, receivers):
-        for i, receiver in enumerate(receivers):
-            amount = card["amount"][i]
+    def _append_balance(self, amount: int, receiver: str) -> None:
+
             try:
                 self.balances[receiver] += amount
             except KeyError:
                 self.balances[receiver] = amount
 
-    def sort_cards(self, cards):
+    def _sort_cards(self, cards: Generator) -> list:
+        '''sort cards by blocknum and blockseq'''
 
-        self.cards = sorted([card.__dict__ for card in cards],
-                            key=itemgetter('blocknum', 'blockseq'))
+        return sorted([card.__dict__ for card in cards],
+                            key=itemgetter('blocknum', 'blockseq', 'cardseq'))
 
-    def calc_state(self):
+    def calc_state(self) -> None:
 
-        for card in self.cards:
+        for card in self._sort_cards(self.cards):
 
-            cid = card["txid"] + str(card["cardseq"])
+            # txid + blockseq + cardseq, as unique ID
+            cid = str(card["txid"] + str(card["blockseq"]) + str(card["cardseq"]))
             ctype = card["type"]
-            amount = sum(card["amount"])
+            amount = card["amount"][0]
+
             if ctype == 'CardIssue' and cid not in self.processed_issues:
-                validate = self.process(card, ctype)
-                self.total += amount * validate # This will set amount to 0 if validate is False
-                self.processed_issues[cid] = card["timestamp"]
+                validate = self._process(card, ctype)
+                self.total += amount * validate  # This will set amount to 0 if validate is False
+                self.processed_issues |= {cid}
 
             if ctype == 'CardTransfer' and cid not in self.processed_transfers:
-                self.process(card, ctype)
-                self.processed_transfers[cid] = card["timestamp"]
+                self._process(card, ctype)
+                self.processed_transfers |= {cid}
 
             if ctype == 'CardBurn' and cid not in self.processed_burns:
-                validate = self.process(card, ctype)
+                validate = self._process(card, ctype)
 
                 self.total -= amount * validate
                 self.burned += amount * validate
-                self.processed_burns[cid] = card["timestamp"]
+                self.processed_burns |= {cid}

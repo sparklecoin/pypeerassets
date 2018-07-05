@@ -1,11 +1,19 @@
-import pytest
 from typing import Generator
-from pypeerassets import find_deck
-from pypeerassets import Deck
-from pypeerassets import paproto
-from pypeerassets.pautils import *
+
+import pytest
+
+from pypeerassets import (
+    Cryptoid,
+    Deck,
+    Explorer,
+    RpcNode,
+    find_deck,
+)
 from pypeerassets.exceptions import *
-from pypeerassets import RpcNode, Mintr, Cryptoid
+from pypeerassets.paproto_pb2 import DeckSpawn
+from pypeerassets.pautils import *
+from pypeerassets.protocol import IssueMode, CardTransfer
+from pypeerassets.pa_constants import param_query
 
 
 @pytest.mark.xfail
@@ -15,68 +23,38 @@ def test_load_p2th_privkeys_into_local_node():
     load_p2th_privkeys_into_local_node(provider=provider)
 
 
-@pytest.mark.parametrize("prov", ["rpc", "holy", "mintr", 'cryptoid'])
+@pytest.mark.parametrize("prov", ["explorer", "cryptoid"])
 def test_find_tx_sender(prov):
 
-    if prov == "holy":
-        provider = Holy(network="peercoin")
-        rawtx = provider.getrawtransaction("397bda2f5e6608c872a663b2e5482d95db8ecfad00757823f0f12caa45a213a6")
-        assert find_tx_sender(provider, rawtx) == 'PNHGzKupyvo2YZVb1CTdRxtCGBB5ykgiug'
-
-    if prov == "mintr":
-        provider = Mintr(network="peercoin")
-        rawtx = provider.getrawtransaction("397bda2f5e6608c872a663b2e5482d95db8ecfad00757823f0f12caa45a213a6")
+    if prov == "explorer":
+        provider = Explorer(network="peercoin")
+        rawtx = provider.getrawtransaction("397bda2f5e6608c872a663b2e5482d95db8ecfad00757823f0f12caa45a213a6", 1)
         assert find_tx_sender(provider, rawtx) == 'PNHGzKupyvo2YZVb1CTdRxtCGBB5ykgiug'
 
     if prov == "cryptoid":
         provider = Cryptoid(network="peercoin")
-        rawtx = provider.getrawtransaction("397bda2f5e6608c872a663b2e5482d95db8ecfad00757823f0f12caa45a213a6")
+        rawtx = provider.getrawtransaction("397bda2f5e6608c872a663b2e5482d95db8ecfad00757823f0f12caa45a213a6", 1)
         assert find_tx_sender(provider, rawtx) == 'PNHGzKupyvo2YZVb1CTdRxtCGBB5ykgiug'
 
-    try:
-        if prov == "rpc":
-            provider = RpcNode(testnet=False)
-            rawtx = provider.getrawtransaction("397bda2f5e6608c872a663b2e5482d95db8ecfad00757823f0f12caa45a213a6")
-            assert find_tx_sender(provider, rawtx) == 'PNHGzKupyvo2YZVb1CTdRxtCGBB5ykgiug'
-    except:
-        print("No RpcNode avaliable.")
-
-
-@pytest.mark.xfail
-@pytest.mark.parametrize("prov", ["rpc", "holy", "mintr", "cryptoid"])
+@pytest.mark.parametrize("prov", ["explorer", "cryptoid"])
 def test_find_deck_spawns(prov):
 
-    if prov == "holy":
-        provider = Holy(network="peercoin-testnet")
-
-    if prov == "mintr":
-        provider = Mintr(network="peercoin")
+    if prov == "explorer":
+        provider = Explorer(network="peercoin")
 
     if prov == "cryptoid":
         provider = Cryptoid(network="peercoin")
-
-    try:
-        if prov == "rpc":
-            provider = RpcNode(testnet=True)
-    except:
-        print("No RpcNode avaliable.")
 
     assert isinstance(find_deck_spawns(provider), Generator)
 
 
-@pytest.mark.parametrize("prov", ["rpc", "holy", "mintr"])
+@pytest.mark.parametrize("prov", ["rpc", "explorer"])
 def test_tx_serialization_order(prov):
 
-    if prov == "holy":
-        provider = Holy(network="peercoin-testnet")
+    if prov == "explorer":
+        provider = Explorer(network="peercoin-testnet")
         assert tx_serialization_order(provider,
                                       txid="f968702bcedc107959aae2c2b1a1becdccbfe7e5a32b460b2c13c1adaa33d541", blockhash="e234d2ef69f7cd1e7ee489546b39314cc838763b4e32438106cba657d9749f2f") == 1
-
-    if prov == "mintr":
-        provider = Mintr()
-        assert tx_serialization_order(provider,
-                                      txid="6f9c76f5e2d188c8d4e8411a89dd152ca94e6b1756aec6c4d12fcbf0450970f7", blockhash="13ea431cb818628d762f224fb3fa957ecdbab661d190d28aedef8449e007f207") == 0
-
 
     try:
         if prov == "rpc":
@@ -129,25 +107,36 @@ def test_read_tx_opreturn():
 
 def generate_dummy_deck():
 
-    return Deck(name="decky", number_of_decimals=2, issue_mode="SINGLET",
-                network="ppc", production=True, asset_specific_data="just testing.")
+    return Deck(
+        name="decky",
+        number_of_decimals=2,
+        issue_mode=IssueMode.SINGLET.value,
+        network="ppc",
+        production=True,
+        version=1,
+        asset_specific_data="just testing.",
+    )
 
 
 def test_deck_issue_mode():
     '''test enum to issue_mode conversion'''
 
-    deck_meta = paproto.DeckSpawn()
+    deck_meta = DeckSpawn()
     deck_meta.issue_mode = 3
 
     assert isinstance(deck_issue_mode(deck_meta), Generator)
     assert list(deck_issue_mode(deck_meta)) == ['CUSTOM', 'ONCE']
+
+    # Check that we handle NONE mode correctly.
+    deck_meta.issue_mode = 0
+    assert list(deck_issue_mode(deck_meta)) == ['NONE']
 
 
 def test_issue_mode_to_enum():
     '''test issue mode to enum conversion'''
 
     deck = generate_dummy_deck().metainfo_to_protobuf
-    deck_meta = paproto.DeckSpawn()
+    deck_meta = DeckSpawn()
     deck_meta.ParseFromString(deck)
 
     assert isinstance(issue_mode_to_enum(deck_meta,
@@ -158,24 +147,26 @@ def test_parse_deckspawn_metainfo():
     '''tests if loading of deck parameteres from protobuf works as it should.'''
 
     string = b'\x08\x01\x12\x0cmy_test_deck\x18\x03 \x02'
-    assert parse_deckspawn_metainfo(string) == {'issue_mode': ["ONCE"],
-                                                'name': 'my_test_deck',
-                                                'number_of_decimals': 3,
-                                                'version': 1,
-                                                'asset_specific_data': b''}
+    assert parse_deckspawn_metainfo(string, 1) == {'issue_mode': IssueMode.ONCE.value,
+                                                   'name': 'my_test_deck',
+                                                   'number_of_decimals': 3,
+                                                   'version': 1,
+                                                   'asset_specific_data': b''
+                                                  }
 
     string = b'\x08\x01\x18\x05 \x04' # without deck name
     with pytest.raises(InvalidDeckMetainfo):
-        parse_deckspawn_metainfo(string)
+        parse_deckspawn_metainfo(string, 1)
 
 
 def test_validate_deckspawn_p2th():
     '''test deckspawn p2th validation'''
 
-    provider = Holy(network="peercoin-testnet")
-    raw_tx = provider.getrawtransaction('643dccd585211766fc03f71e92fbf299cfc2bdbf3f2cae0ad85adec3141069f3')
+    provider = Explorer(network="peercoin-testnet")
+    p2th = param_query('peercoin-testnet').P2TH_addr
+    raw_tx = provider.getrawtransaction('643dccd585211766fc03f71e92fbf299cfc2bdbf3f2cae0ad85adec3141069f3', 1,)
 
-    assert validate_deckspawn_p2th(provider, raw_tx, True)
+    assert validate_deckspawn_p2th(provider, raw_tx, p2th)
 
 
 @pytest.mark.xfail
@@ -188,33 +179,46 @@ def test_load_deck_p2th_into_local_node():
 
 def test_validate_card_transfer_p2th():
 
-    provider = Holy(network="peercoin-testnet")
-    deck = find_deck(provider, "643dccd585211766fc03f71e92fbf299cfc2bdbf3f2cae0ad85adec3141069f3")[0]
-    card = "809c506bc3add9e46a4d3a65348426688545213da5fb5b524acd380f2cdaf3cc"
+    provider = Cryptoid(network="peercoin-testnet")
+    deck = find_deck(provider, "643dccd585211766fc03f71e92fbf299cfc2bdbf3f2cae0ad85adec3141069f3", 1)
+    raw_tx = provider.getrawtransaction("809c506bc3add9e46a4d3a65348426688545213da5fb5b524acd380f2cdaf3cc", 1)
 
-    validate_card_transfer_p2th(deck, provider.getrawtransaction("809c506bc3add9e46a4d3a65348426688545213da5fb5b524acd380f2cdaf3cc"))
+    validate_card_transfer_p2th(deck, raw_tx)
 
 
 def test_parse_card_transfer_metainfo():
 
     card = b'\x08\x01\x12\n\xd0\xd2=\x80\x89z\xee\x83\xb8\x01\x18\x05'
-    res = parse_card_transfer_metainfo(card)
+    res = parse_card_transfer_metainfo(card, 1)
 
     assert isinstance(res, dict)
 
 
 def test_postprocess_card():
 
-    provider = Holy(network="peercoin-testnet")
-    deck = find_deck(provider, "643dccd585211766fc03f71e92fbf299cfc2bdbf3f2cae0ad85adec3141069f3")[0]
-    raw_tx = provider.getrawtransaction('809c506bc3add9e46a4d3a65348426688545213da5fb5b524acd380f2cdaf3cc')
+    provider = Explorer(network="peercoin-testnet")
+    deck = find_deck(provider, "643dccd585211766fc03f71e92fbf299cfc2bdbf3f2cae0ad85adec3141069f3", 1)
+    raw_tx = provider.getrawtransaction('809c506bc3add9e46a4d3a65348426688545213da5fb5b524acd380f2cdaf3cc', 1)
     vout = raw_tx["vout"]
     blockseq = tx_serialization_order(provider, raw_tx["blockhash"], raw_tx["txid"])
     blocknum = provider.getblock(raw_tx["blockhash"])["height"]
     sender = 'moQzpzzcCYZMnAz224EY4att5A9psxN8X2'
-    card_metainfo = b'\x08\x01\x12\n\xd0\xd2=\x80\x89z\xee\x83\xb8\x01\x18\x05'
+    card_transfer = CardTransfer(
+                    deck=deck,
+                    receiver=["n4KuTR5CzyQTbrpwbAKEdTfJERKmtHWWgr"],
+                    amount=[1],
+                    version=1,
+                    )
 
-    card = postprocess_card(card_metainfo, raw_tx, sender, vout, blockseq, blocknum, deck)
+    card = postprocess_card(card_metainfo=card_transfer.metainfo_to_dict, 
+                            raw_tx=raw_tx,
+                            sender=sender, 
+                            vout=vout,
+                            blockseq=blockseq,
+                            blocknum=blocknum,
+                            tx_confirmations=raw_tx['confirmations'],
+                            deck=deck)
+
     assert isinstance(card, list)
 
 
