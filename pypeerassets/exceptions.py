@@ -1,6 +1,10 @@
 '''all custom exceptions should go here'''
 
 
+class EmptyP2THDirectory(Exception):
+    '''no transactions on this P2TH directory'''
+
+
 class P2THImportFailed(Exception):
     '''Importing of PeerAssets P2TH privkeys failed.'''
 
@@ -37,12 +41,16 @@ class InvalidCardTransferP2TH(Exception):
     '''card_transfer does not pay to deck p2th in vout[0]'''
 
 
-class CardVersionMistmatch(Exception):
+class CardVersionMismatch(Exception):
     '''card_transfers version must match deck.version'''
 
 
 class CardNumberOfDecimalsMismatch(Exception):
     '''card_tranfer number of decimals does not match deck rules.'''
+
+
+class RecieverAmountMismatch(Exception):
+    '''card_transfer list of recievers is not equal to list of amounts'''
 
 
 class InsufficientFunds(Exception):
@@ -51,3 +59,11 @@ class InsufficientFunds(Exception):
 
 class InvalidNulldataOutput(Exception):
     '''mallformed OP_RETURN transaction output.'''
+
+
+class InvalidVoutOrder(Exception):
+    '''mallformed vout sequence'''
+
+
+class OverSizeOPReturn(Exception):
+    '''op_return size is exceeding the maximum size allowed by this network.'''

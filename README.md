@@ -1,19 +1,31 @@
 # pypeerassets
 
-Official Python implementation of the PeerAssets protocol.
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![PyPI](https://img.shields.io/pypi/v/pypeerassets.svg?style=flat-square)](https://pypi.python.org/pypi/pypeerassets/)
+[![](https://img.shields.io/badge/python-3.5+-blue.svg)](https://www.python.org/download/releases/3.5.0/) 
+[![Build Status](https://travis-ci.org/PeerAssets/pypeerassets.svg?branch=master)](https://travis-ci.org/PeerAssets/pypeerassets)
+[![Coverage Status](https://coveralls.io/repos/github/PeerAssets/pypeerassets/badge.svg)](https://coveralls.io/github/PeerAssets/pypeerassets)
 
-This library aims to implement the PeerAssets protocol itself, but also provide elementary interfaces with the underlying blockchain.
-Once completed library should be able to spawn asset decks, deduce proof-of-timeline for each deck and handle all asset transactions
-while not depending on local blockchain node until it needs to broadcast the transaction or fetch group of transactions.
-Furthermore, library will aim to cover the needs of DAC or DAC-like projects using the PeerAssets protocol.
+Official Python implementation of the [PeerAssets protocol](https://github.com/PeerAssets/WhitePaper).
 
-Library is coded with Python3 in mind, compatibility with older Python releases is not in our scope.
+`pypeerassets` aims to implement the PeerAssets protocol itself **and** to provide elementary interfaces to underlying blockchains.
 
-### Dependencies
+Once complete, the library will be able to spawn asset decks, deduce proof-of-timeline for asset decks and handle all asset transactions **while not** communicating with a blockchain node until it needs to broadcast a transaction or to fetch a group of transactions.
 
-`pip install --user protobuf`
+`pypeerassets` is lovingly crafted with python3 all around the world :heart: :snake: :globe_with_meridians:
 
-### Clone
+### VirtualEnv Development
 
-`https://github.com/PeerAssets/pypeerassets`
+Create a python3 virtualenv in the root directory:
 
+```
+> virtualenv -p python3 venv
+...
+> source venv/bin/activate
+(venv) > pip install -r requirements.txt
+...
+(venv) > pip install -r requirements-dev.txt
+...
+(venv) > pytest
+...
+```
