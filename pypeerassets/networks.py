@@ -7,7 +7,7 @@ from btcpy.constants import (
   PeercoinMainnet,
   PeercoinTestnet,
   SparklecoinMainnet,
-  PeercoinTestnet
+  SparklecoinTestnet
 )
 
 from pypeerassets.exceptions import UnsupportedNetwork
